@@ -11,7 +11,7 @@ import "io"
 type Header struct {
 	ServiceMethod string // format "Service.Method" 服务名.方法名
 	Seq           uint64 // 请求的序号
-	Error         error
+	Error         string
 }
 
 // Codec 对消息体进行编码/解码的接口
