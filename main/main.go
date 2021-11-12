@@ -7,14 +7,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/LucienVen/Trpc"
-	"github.com/LucienVen/Trpc/core"
 	"log"
 	"net"
+	"sync"
 	"time"
-
 )
 
 
@@ -31,33 +29,90 @@ func startServer(addr chan string)  {
 	Trpc.Accept(l)
 }
 
+// Day-1
+//func main()  {
+//	addr := make(chan string)
+//	go startServer(addr)
+//
+//	conn, _ := net.Dial("tcp", <-addr)
+//	defer func() {
+//		_ = conn.Close()
+//	}()
+//
+//	time.Sleep(time.Second)
+//
+//	// 发送option
+//	json.NewEncoder(conn).Encode(Trpc.DefaultOption)
+//	cc := core.NewGobCodec(conn)
+//
+//	for i := 0; i < 5; i++ {
+//		h := &core.Header{
+//			ServiceMethod: "Foo.sum",
+//			Seq:           uint64(i),
+//			Error:         "",
+//		}
+//
+//		// write 模拟发送请求
+//		cc.Write(h, fmt.Sprintf("Trpc req: %d", h.Seq))
+//		cc.ReadHeader(h)
+//
+//		var reply string
+//		cc.ReadBody(&reply)
+//		log.Println("reply: ", reply)
+//	}
+//}
+
+// Day-2
 func main()  {
+	log.SetFlags(0)
 	addr := make(chan string)
 	go startServer(addr)
 
-	conn, _ := net.Dial("tcp", <-addr)
+	client, _ := Trpc.Dial("tcp", <-addr)
 	defer func() {
-		_ = conn.Close()
+		_ = client.Close()
 	}()
 
 	time.Sleep(time.Second)
 
-	// 发送option
-	json.NewEncoder(conn).Encode(Trpc.DefaultOption)
-	cc := core.NewGobCodec(conn)
-
+	// 发送请求和接受响应
+	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
-		h := &core.Header{
-			ServiceMethod: "Foo.sum",
-			Seq:           uint64(i),
-			Error:         "",
-		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			args := fmt.Sprintf("trpc req: %d", i)
+			var reply string
+			if err := client.Call("Foo.Sum", args, &reply); err != nil {
+				log.Fatal("call Foo.Sum error: ", err)
+			}
 
-		cc.Write(h, fmt.Sprintf("Trpc req: %d", h.Seq))
-		cc.ReadHeader(h)
-
-		var reply string
-		cc.ReadBody(&reply)
-		log.Println("reply: ", reply)
+			log.Println("reply: ", reply)
+		}(i)
 	}
+
+	wg.Wait()
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
