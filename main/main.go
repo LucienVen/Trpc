@@ -11,6 +11,8 @@ import (
 	"github.com/LucienVen/Trpc"
 	"log"
 	"net"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,7 +23,7 @@ func startServer(addr chan string)  {
 	// TODO 读取配置
 	l, err := net.Listen("tcp", ":8765")
 	if err != nil {
-		log.Fatalf("network error:", err)
+		log.Fatal("network error:", err)
 	}
 
 	log.Println("start rpc server on: ", l.Addr())
@@ -94,11 +96,37 @@ func main()  {
 	wg.Wait()
 }
 
+func CheckWg()  {
+	var wg sync.WaitGroup
+	typ := reflect.TypeOf(&wg)
+	//fmt.Println(typ.NumMethod())
+	for i := 0; i < typ.NumMethod(); i++ {
+		method := typ.Method(i)
+		fmt.Println("method:", method.Type)
+
+		argv := make([]string, 0, method.Type.NumIn())
+		returns := make([]string, 0, method.Type.NumOut())
+
+		for j := 1; j < method.Type.NumIn(); j++ {
+			fmt.Println("method in:", method.Type.In(j))
+			argv = append(argv, method.Type.In(j).Name())
+		}
+
+		for j := 0; j < method.Type.NumOut(); j++ {
+			returns = append(returns, method.Type.Out(j).Name())
+			fmt.Println("method out:", method.Type.Out(j))
+
+		}
 
 
-
-
-
+		log.Printf("func (w *%s) %s(%s) %s",
+				typ.Elem().Name(),
+				method.Name,
+				strings.Join(argv, ","),
+				strings.Join(returns, ","),
+			)
+	}
+}
 
 
 
