@@ -7,15 +7,18 @@
 package Trpc
 
 import (
-	"fmt"
 	"go/ast"
 	"log"
 	"reflect"
 	"sync/atomic"
 )
 
+
+/**
+典型RPC调用 ==>  err = client.Call("Arith.Multiply", args, &reply) => 服务名，参数，返回值
+ */
 type methodType struct {
-	method    reflect.Method
+	method    reflect.Method // 方法自身
 	ArgType   reflect.Type // 第一个参数类型
 	ReplyType reflect.Type // 第二个参数的类型
 	numCalls  uint64       // 统计方法调用次数
@@ -42,14 +45,12 @@ func (m *methodType) newArgv() reflect.Value {
 func (m *methodType) newReplyv() reflect.Value {
 	// 响应类型必须为指针类型
 	replyv := reflect.New(m.ReplyType.Elem())
-
 	switch m.ReplyType.Elem().Kind() {
 	case reflect.Map:
 		replyv.Elem().Set(reflect.MakeMap(m.ReplyType.Elem()))
 	case reflect.Slice:
 		replyv.Elem().Set(reflect.MakeSlice(m.ReplyType.Elem(), 0, 0))
 	}
-
 	return replyv
 }
 
@@ -60,15 +61,16 @@ type service struct {
 	method map[string]*methodType	// 存储映射的结构体的所有符合条件的方法
 }
 
+// 构造函数，入参为任意需要映射为服务的结构体实例
 func newService(rcvr interface{}) *service {
 	s := new(service)
 	s.rcvr = reflect.ValueOf(rcvr)
 	// reflect.Indirect 间接返回 s.rcvr 指向的值
 	s.name = reflect.Indirect(s.rcvr).Type().Name()
-	fmt.Println("s.name,indirect:", reflect.Indirect(s.rcvr).Type().Name())
+	//fmt.Println("s.name,indirect:", reflect.Indirect(s.rcvr).Type().Name())
 
 	s.typ = reflect.TypeOf(rcvr)
-	// TODO 打印
+	// 判断名称是否以大写字母开头（命名规则）
 	if !ast.IsExported(s.name) {
 		log.Fatalf("rpc server: %s is not a valid service name", s.name)
 	}
@@ -94,7 +96,7 @@ func (s *service) registerMethods()  {
 		}
 
 		// 判断出参第一个参数类型
-		fmt.Println("mType.Out(0):", mType.Out(0) )
+		//fmt.Println("mType.Out(0):", mType.Out(0) )
 		if mType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
 			continue
 		}

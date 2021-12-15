@@ -20,6 +20,12 @@ import (
 
 // 使用chan，确保服务端端口监听成功再发起请求
 func startServer(addr chan string)  {
+	// 注册Foo到服务中
+	var foo Foo
+	if err := Trpc.Register(&foo); err != nil {
+		log.Fatal("register error:", err)
+	}
+
 	// TODO 读取配置
 	l, err := net.Listen("tcp", ":8765")
 	if err != nil {
@@ -83,8 +89,19 @@ func main()  {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			args := fmt.Sprintf("trpc req: %d", i)
-			var reply string
+			// Day-2
+			//args := fmt.Sprintf("trpc req: %d", i)
+
+			//day-3
+			args := &Args{
+				Num1: i,
+				Num2: i+1,
+			}
+			//day-2
+			//var reply string
+
+			//day-3
+			var reply int
 			if err := client.Call("Foo.Sum", args, &reply); err != nil {
 				log.Fatal("call Foo.Sum error: ", err)
 			}
@@ -129,6 +146,19 @@ func CheckWg()  {
 }
 
 
+
+// day-3
+
+type Foo int
+
+type Args struct {
+	Num1, Num2 int
+}
+
+func (f Foo) Sum(args Args, reply *int) error {
+	*reply = args.Num1 + args.Num2
+	return nil
+}
 
 
 
