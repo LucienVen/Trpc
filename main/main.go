@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/LucienVen/Trpc"
 	"log"
@@ -101,8 +102,9 @@ func main()  {
 			//var reply string
 
 			//day-3
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
 			var reply int
-			if err := client.Call("Foo.Sum", args, &reply); err != nil {
+			if err := client.Call(ctx, "Foo.Sum", args, &reply); err != nil {
 				log.Fatal("call Foo.Sum error: ", err)
 			}
 

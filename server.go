@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 // @TODO 改为读取配置
@@ -26,11 +27,14 @@ const DefaultMagicNumber = 0x3bef5c
 type Option struct {
 	MagicNumber int
 	CodecType   core.Ttype
+	ConnectTimeout time.Duration	// 默认0，代表无限制
+	HandleTimeout time.Duration
 }
 
 var DefaultOption = &Option{
 	MagicNumber: DefaultMagicNumber,
 	CodecType:   core.GobType,
+	ConnectTimeout: time.Second * 10, // 默认10s
 }
 
 /** 服务端的实现 **/
@@ -83,13 +87,13 @@ func (s *Server) ServeConn(conn io.ReadWriteCloser) {
 		return
 	}
 
-	s.serveCodec(f(conn))
+	s.serveCodec(f(conn), &opt)
 }
 
 // 发生错误时候的占位符
 var invalidRequest = struct{}{}
 
-func (s *Server) serveCodec(cc core.Codec) {
+func (s *Server) serveCodec(cc core.Codec, opt *Option) {
 	sending := new(sync.Mutex)
 	wg := new(sync.WaitGroup)
 
@@ -107,7 +111,7 @@ func (s *Server) serveCodec(cc core.Codec) {
 		}
 
 		wg.Add(1)
-		go s.handleRequest(cc, req, sending, wg)
+		go s.handleRequest(cc, req, sending, wg, opt.HandleTimeout)
 	}
 
 	wg.Wait()
@@ -178,19 +182,43 @@ func (s *Server) readRequest(cc core.Codec) (*request, error) {
 }
 
 // 处理请求
-func (s *Server) handleRequest(cc core.Codec, req *request, sending *sync.Mutex, wg *sync.WaitGroup) {
+func (s *Server) handleRequest(cc core.Codec, req *request, sending *sync.Mutex, wg *sync.WaitGroup, timeout time.Duration) {
 	defer wg.Done()
 	//log.Println(req.h, req.argv.Elem())
 	//req.replyv = reflect.ValueOf(fmt.Sprintf("Trpc resp: %v", req.h.Seq))
 
-	err := req.svc.call(req.mtype, req.argv, req.replyv)
-	if err != nil {
-		req.h.Error = err.Error()
-		s.sendResponse(cc, req.h, invalidRequest, sending)
+	called := make(chan struct{})
+	sent := make(chan struct{})
+
+	go func() {
+		err := req.svc.call(req.mtype, req.argv, req.replyv)
+		called <- struct{}{}
+		if err != nil {
+			req.h.Error = err.Error()
+			s.sendResponse(cc, req.h, invalidRequest, sending)
+			sent <- struct{}{}
+			return
+		}
+
+		s.sendResponse(cc, req.h, req.replyv.Interface(), sending)
+		sent <- struct{}{}
+	}()
+
+	if timeout == 0 {
+		<-called
+		<-sent
 		return
 	}
 
-	s.sendResponse(cc, req.h, req.replyv.Interface(), sending)
+	select {
+	case <-time.After(timeout):
+		req.h.Error = fmt.Sprintf("rpc server: request handle timeout: expect within %s", timeout)
+		s.sendResponse(cc, req.h, invalidRequest, sending)
+	case <-called:
+		<-sent
+
+	}
+	//s.sendResponse(cc, req.h, req.replyv.Interface(), sending)
 }
 
 // 回复请求
