@@ -12,6 +12,7 @@ import (
 	"github.com/LucienVen/Trpc"
 	"log"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -20,7 +21,7 @@ import (
 
 
 // 使用chan，确保服务端端口监听成功再发起请求
-func startServer(addr chan string)  {
+func startServer2(addr chan string)  {
 	// 注册Foo到服务中
 	var foo Foo
 	if err := Trpc.Register(&foo); err != nil {
@@ -33,9 +34,13 @@ func startServer(addr chan string)  {
 		log.Fatal("network error:", err)
 	}
 
+	//_ = Trpc.Register(&foo)
+	Trpc.HandleHTTP()
+
 	log.Println("start rpc server on: ", l.Addr())
 	addr <- l.Addr().String()
-	Trpc.Accept(l)
+	//Trpc.Accept(l)
+	_ = http.Serve(l, nil)
 }
 
 // Day-1
@@ -72,7 +77,7 @@ func startServer(addr chan string)  {
 //}
 
 // Day-2
-func main()  {
+func main2()  {
 	log.SetFlags(0)
 	addr := make(chan string)
 	go startServer(addr)
@@ -165,14 +170,49 @@ func (f Foo) Sum(args Args, reply *int) error {
 
 
 
+// day-4
+func call(addrCh chan string)  {
+	client, _ := Trpc.DialHTTP("tcp", <-addrCh)
+	defer func() {
+		_ = client.Close()
+	}()
+
+	time.Sleep(time.Second)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			args := &Args{
+				Num1: i,
+				Num2: i * i,
+			}
+
+			var reply int
+			if err := client.Call(context.Background(), "Foo.Sum", args, &reply); err != nil {
+				log.Fatal("call Foo.Sum error:", err)
+			}
+			log.Printf("%d * %d = %d", args.Num1, args.Num2, reply)
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func main()  {
+	log.SetFlags(0)
+	ch := make(chan string)
+	go call(ch)
+	startServer(ch)
+}
 
 
-
-
-
-
-
-
-
-
-
+func startServer(addrCh chan string) {
+	var foo Foo
+	l, _ := net.Listen("tcp", ":9999")
+	_ = Trpc.Register(&foo)
+	Trpc.HandleHTTP()
+	addrCh <- l.Addr().String()
+	_ = http.Serve(l, nil)
+}

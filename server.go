@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -47,7 +48,7 @@ func NewServer() *Server {
 	return &Server{}
 }
 
-var DeafaultServer = NewServer()
+var DefaultServer = NewServer()
 
 func (s *Server) Accept(lis net.Listener) {
 	for {
@@ -62,7 +63,7 @@ func (s *Server) Accept(lis net.Listener) {
 }
 
 func Accept(lis net.Listener) {
-	DeafaultServer.Accept(lis)
+	DefaultServer.Accept(lis)
 }
 
 func (s *Server) ServeConn(conn io.ReadWriteCloser) {
@@ -243,7 +244,7 @@ func (s *Server) Register(rcvr interface{}) error {
 
 // 注册在 DefaultServer 中发布接收者的方法
 func Register(rcvr interface{}) error {
-	return DeafaultServer.Register(rcvr)
+	return DefaultServer.Register(rcvr)
 }
 
 // 寻找服务（通过ServiceMethod 从 serviceMap 中找到对应的service）
@@ -268,4 +269,43 @@ func (s *Server) findService(serviceMethod string) (svc *service, mtype *methodT
 		err = errors.New("rpc server: can't find method " + methodName)
 	}
 	return
+}
+
+
+// ******* http ********
+
+const (
+	connected = "200 Connected to T-RPC"
+	defaultRPCPath = "/_trpc_"
+	defaultDebugPath = "/debug/trpc"
+)
+
+// 实现http.Handle 并响应rpc请求
+func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request)  {
+	if req.Method != "CONNECT" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = io.WriteString(w, "405 must CONNECT\n")
+		return
+	}
+
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		log.Print("rpc hijacking ", req.RemoteAddr, ": ", err.Error())
+		return
+	}
+
+	_, _ = io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")
+	s.ServeConn(conn)
+}
+
+func (s *Server) HandleHTTP()  {
+	http.Handle(defaultRPCPath, s)
+	// debugHTTP 实例绑定到地址
+	http.Handle(defaultDebugPath, debugHTTP{s})
+	log.Println("rpc server debug path:", defaultDebugPath)
+}
+
+func HandleHTTP()  {
+	DefaultServer.HandleHTTP()
 }
